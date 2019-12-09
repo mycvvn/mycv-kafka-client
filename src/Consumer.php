@@ -39,15 +39,19 @@ class Consumer {
             switch ($err) {
                 case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
                     echo "Assign: ";
-                    var_dump($partitions);
+                    foreach ($partitions as $partition) {
+                        echo "- Topic: {$partition->topic}, partition: {$partition->partition}, offset: {$partition->offset}\n";
+                    }
                     $kafka->assign($partitions);
                     break;
         
                  case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
-                     echo "Revoke: ";
-                     var_dump($partitions);
-                     $kafka->assign(NULL);
-                     break;
+                    echo "Revoke: ";
+                    foreach ($partitions as $partition) {
+                        echo "- Topic: {$partition->topic}, partition: {$partition->partition}, offset: {$partition->offset}\n";
+                    }
+                    $kafka->assign(NULL);
+                    break;
         
                  default:
                     throw new \Exception($err);
