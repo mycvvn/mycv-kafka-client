@@ -16,17 +16,20 @@ class Consumer {
 
     public function __construct()
     {
+        echo "Kafka consumer starting...\n";
         $this->conf = new \RdKafka\Conf();
     }
 
     public function setGroup($group)
     {
+        echo "Registered group.id `$group`\n";
         $this->conf->set('group.id', $group);
         return $this;
     }
 
     public function configure()
     {
+        echo "Consumer & TopicConf configuring...\n";
         $this->rk = new \RdKafka\Consumer($this->conf);
         $this->rk->addBrokers(env('KAFKA_BROKER_LIST'));
 
@@ -42,8 +45,9 @@ class Consumer {
 
     public function setTopic($topic, $alias)
     {
+        echo "Registered topic `$topic`\n";
         $this->$alias = $this->rk->newTopic($topic, $this->topicConf);
-        $this->$alias->consumeQueueStart(0, \RD_KAFKA_OFFSET_BEGINNING, $this->queue);
+        $this->$alias->consumeQueueStart(0, \RD_KAFKA_OFFSET_STORED, $this->queue);
         return $this;
     }
 
@@ -52,19 +56,21 @@ class Consumer {
         while (true) {
             $message = $this->queue->consume(120 * 1000);
             
-            switch ($message->err) {
-                case RD_KAFKA_RESP_ERR_NO_ERROR:
-                    $this->handleListeningCallback($callback, $message);
-                    break;
-                case RD_KAFKA_RESP_ERR__PARTITION_EOF:
-                    echo "No more messages; will wait for more\n";
-                    break;
-                case RD_KAFKA_RESP_ERR__TIMED_OUT:
-                    echo "Timed out\n";
-                    break;
-                default:
-                    throw new \Exception($message->errstr(), $message->err);
-                    break;
+            if ($message) {
+                switch ($message->err) {
+                    case RD_KAFKA_RESP_ERR_NO_ERROR:
+                        $this->handleListeningCallback($callback, $message);
+                        break;
+                    case RD_KAFKA_RESP_ERR__PARTITION_EOF:
+                        echo "No more messages; will wait for more\n";
+                        break;
+                    case RD_KAFKA_RESP_ERR__TIMED_OUT:
+                        echo "Timed out\n";
+                        break;
+                    default:
+                        throw new \Throwable($message->errstr(), $message->err);
+                        break;
+                }
             }
         }
     }
