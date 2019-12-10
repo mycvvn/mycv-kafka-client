@@ -3,8 +3,7 @@
 namespace MyCVKafka;
 
 class Consumer {
-    private static $instance;
-    protected $topics = ['test'];
+    public static $instance;
 
     public static function getInstance()
     {
@@ -18,7 +17,6 @@ class Consumer {
     public function __construct()
     {
         $this->conf = new \RdKafka\Conf();
-        $this->conf->set('metadata.broker.list', env('KAFKA_BROKER_LIST'));
     }
 
     public function setGroup($group)
@@ -27,49 +25,39 @@ class Consumer {
         return $this;
     }
 
-    public function setTopics($topics)
+    public function configure()
     {
-        $this->topics = $topics;
+        $this->rk = new \RdKafka\Consumer($this->conf);
+        $this->rk->addBrokers(env('KAFKA_BROKER_LIST'));
+
+        $this->queue = $this->rk->newQueue();
+
+        $this->topicConf = new \RdKafka\TopicConf();
+        $this->topicConf->set('auto.commit.interval.ms', 100);
+    
+        $this->topicConf->set('offset.store.method', 'broker');
+        $this->topicConf->set('auto.offset.reset', 'smallest');
         return $this;
     }
 
-    public function setRebalanceCb()
+    public function setTopic($topic, $alias)
     {
-        $this->conf->setRebalanceCb(function (\RdKafka\KafkaConsumer $kafka, $err, array $partitions = null) {
-            switch ($err) {
-                case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
-                    echo "Assign: ";
-                    foreach ($partitions as $partition) {
-                        echo "- Topic: {$partition->topic}, partition: {$partition->partition}, offset: {$partition->offset}\n";
-                    }
-                    $kafka->assign($partitions);
-                    break;
-        
-                 case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
-                    echo "Revoke: ";
-                    foreach ($partitions as $partition) {
-                        echo "- Topic: {$partition->topic}, partition: {$partition->partition}, offset: {$partition->offset}\n";
-                    }
-                    $kafka->assign(NULL);
-                    break;
-        
-                 default:
-                    throw new \Exception($err);
-            }
-        });
+        $this->$alias = $this->rk->newTopic($topic, $this->topicConf);
+        $this->$alias->consumeQueueStart(0, \RD_KAFKA_OFFSET_BEGINNING, $this->queue);
         return $this;
     }
 
     public function listeningMessage(callable $callback)
     {
-        $consumer = new \RdKafka\KafkaConsumer($this->conf);
-        $consumer->subscribe($this->topics);
-        
         while (true) {
-            $message = $consumer->consume(120*1000);
+            $message = $this->queue->consume(120 * 1000);
+            
             switch ($message->err) {
                 case RD_KAFKA_RESP_ERR_NO_ERROR:
                     $this->handleListeningCallback($callback, $message);
+                    break;
+                case RD_KAFKA_RESP_ERR__PARTITION_EOF:
+                    echo "No more messages; will wait for more\n";
                     break;
                 case RD_KAFKA_RESP_ERR__TIMED_OUT:
                     echo "Timed out\n";
